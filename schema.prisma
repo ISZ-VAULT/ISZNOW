@@ -1,0 +1,164 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  AGENT
+}
+
+enum DocumentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum TransactionType {
+  RECHARGE
+  DEDUCTION
+  REFUND
+  ADJUSTMENT
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum PaymentMethod {
+  CARD_CODE
+  CHARGILY
+  ADMIN
+  SYSTEM
+}
+
+enum TemplateType {
+  RESEARCH
+  CV
+  INVOICE
+  LETTER
+}
+
+model User {
+  id            String   @id @default(cuid())
+  name          String
+  email         String   @unique
+  password      String
+  role          Role     @default(AGENT)
+  pointsBalance Int      @default(0)
+  isBanned      Boolean  @default(false)
+  locale        String   @default("ar")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  documents    Document[]
+  transactions Transaction[]
+  usedCards    RechargeCard[] @relation("CardUsedBy")
+
+  @@index([role])
+}
+
+model Service {
+  id            String       @id @default(cuid())
+  slug          String       @unique
+  nameAr        String
+  nameFr        String
+  descriptionAr String?
+  descriptionFr String?
+  category      String
+  pointsCost    Int
+  templateType  TemplateType
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  documents Document[]
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  userId        String
+  serviceId     String
+  inputData     Json
+  outputContent String?        @db.Text
+  language      String         @default("fr")
+  status        DocumentStatus @default(PENDING)
+  pointsCharged Int
+  errorMessage  String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id])
+  service      Service       @relation(fields: [serviceId], references: [id])
+  transactions Transaction[]
+
+  @@index([userId, createdAt])
+  @@index([status])
+}
+
+model Transaction {
+  id                 String            @id @default(cuid())
+  userId             String
+  type               TransactionType
+  status             TransactionStatus @default(COMPLETED)
+  method             PaymentMethod     @default(SYSTEM)
+  amountDzd          Int?
+  points             Int
+  balanceAfter       Int?
+  documentId         String?
+  rechargeCardId     String?
+  chargilyCheckoutId String?           @unique
+  createdAt          DateTime          @default(now())
+
+  user         User          @relation(fields: [userId], references: [id])
+  document     Document?     @relation(fields: [documentId], references: [id])
+  rechargeCard RechargeCard? @relation(fields: [rechargeCardId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([type, status])
+}
+
+model RechargeBatch {
+  id          String   @id @default(cuid())
+  packName    String
+  points      Int
+  priceDzd    Int
+  quantity    Int
+  createdById String
+  createdAt   DateTime @default(now())
+
+  cards RechargeCard[]
+}
+
+model RechargeCard {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  points       Int
+  priceDzd     Int
+  batchId      String
+  isUsed       Boolean   @default(false)
+  usedByUserId String?
+  usedAt       DateTime?
+  createdAt    DateTime  @default(now())
+
+  batch        RechargeBatch @relation(fields: [batchId], references: [id])
+  usedBy       User?         @relation("CardUsedBy", fields: [usedByUserId], references: [id])
+  transactions Transaction[]
+
+  @@index([batchId])
+  @@index([isUsed])
+}
+
+model PointsPackage {
+  id       String  @id @default(cuid())
+  name     String
+  points   Int
+  priceDzd Int
+  isActive Boolean @default(true)
+}
